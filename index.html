@@ -642,7 +642,18 @@ textarea.fc{resize:vertical;min-height:70px}
     <select class="fc" id="proj-client"><option value="">Selecteer klant...</option></select>
   </div>
   <div class="fg"><label class="fl">Omschrijving</label><textarea class="fc" id="proj-desc" rows="2" placeholder="Korte toelichting..."></textarea></div>
-  <div class="fg"><label class="fl">Budget (€)</label><input class="fc" type="number" id="proj-budget" placeholder="0" step="100"></div>
+  <div class="fg">
+    <label class="fl">Facturatie type</label>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="type-pill on" id="proj-type-uur" onclick="setProjType('uur',this)"><i class="fa fa-clock"></i> Uurtarief</button>
+      <button class="type-pill" id="proj-type-dag" onclick="setProjType('dag',this)"><i class="fa fa-calendar-day"></i> Dagtarief</button>
+      <button class="type-pill" id="proj-type-vast" onclick="setProjType('vast',this)"><i class="fa fa-tag"></i> Vaste prijs</button>
+    </div>
+  </div>
+  <div class="row2" id="proj-rate-wrap">
+    <div class="fg"><label class="fl" id="proj-rate-lbl">Tarief per uur (€)</label><input class="fc" type="number" id="proj-rate" placeholder="150" step="5"></div>
+    <div class="fg"><label class="fl">Budget (€)</label><input class="fc" type="number" id="proj-budget" placeholder="0" step="100"></div>
+  </div>
   <div class="fg">
     <label class="fl">Status</label>
     <select class="fc" id="proj-status">
@@ -1174,11 +1185,21 @@ function renderDiensten(){
 function delDienst(id){if(!confirm('Verwijderen?'))return;diensten=diensten.filter(e=>e.id!==id);save();renderDiensten()}
 
 // ======== PROJECTEN ========
+let projType='uur';
+function setProjType(t,btn){
+  projType=t;
+  ['uur','dag','vast'].forEach(x=>document.getElementById('proj-type-'+x).classList.remove('on'));
+  btn.classList.add('on');
+  const lbl={'uur':'Tarief per uur (€)','dag':'Dagtarief (€)','vast':'Projectprijs (€)'};
+  document.getElementById('proj-rate-lbl').textContent=lbl[t];
+  document.getElementById('proj-rate-wrap').style.display=t==='vast'?'block':'grid';
+}
 function resetProjectForm(){
   document.getElementById('proj-sheet-title').textContent='Project aanmaken';
   document.getElementById('proj-eid').value='';
-  ['proj-name','proj-desc','proj-budget'].forEach(id=>document.getElementById(id).value='');
+  ['proj-name','proj-desc','proj-budget','proj-rate'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('proj-status').value='actief';
+  setProjType('uur',document.getElementById('proj-type-uur'));
   fillClientSelects();
   document.getElementById('proj-client').value='';
 }
@@ -1192,13 +1213,16 @@ function editProject(id){
   document.getElementById('proj-client').value=p.cid||'';
   document.getElementById('proj-desc').value=p.desc||'';
   document.getElementById('proj-budget').value=p.budget||'';
+  document.getElementById('proj-rate').value=p.tarief||'';
   document.getElementById('proj-status').value=p.status||'actief';
+  const t=p.tariefType||'uur';
+  setProjType(t,document.getElementById('proj-type-'+t));
   document.getElementById('sh-addproject').classList.add('on');
 }
 function saveProject(){
   const name=document.getElementById('proj-name').value.trim();
   if(!name){alert('Vul een projectnaam in.');return}
-  const data={name,cid:document.getElementById('proj-client').value,desc:document.getElementById('proj-desc').value.trim(),budget:parseFloat(document.getElementById('proj-budget').value)||0,status:document.getElementById('proj-status').value};
+  const data={name,cid:document.getElementById('proj-client').value,desc:document.getElementById('proj-desc').value.trim(),budget:parseFloat(document.getElementById('proj-budget').value)||0,status:document.getElementById('proj-status').value,tariefType:projType,tarief:parseFloat(document.getElementById('proj-rate').value)||0};
   const eid=document.getElementById('proj-eid').value;
   if(eid){const i=projects.findIndex(p=>p.id===eid);if(i>-1)projects[i]={...projects[i],...data}}
   else projects.push({id:uid(),createdAt:today(),...data});
