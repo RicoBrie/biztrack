@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root {
   --bg:#f2f2f7; --card:#fff; --text:#1c1c1e; --text2:#6c6c70;
@@ -169,6 +170,16 @@ textarea.fc{resize:vertical;min-height:70px}
         <div class="stat-val" id="d-pay">€ 0</div>
         <div class="stat-sub" id="d-pay-n">0 facturen</div>
       </div>
+    </div>
+    <div class="card" style="margin-bottom:10px;padding-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="card-label" style="margin-bottom:0">Omzet vs Kosten</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text2)"><span style="width:10px;height:10px;border-radius:2px;background:#22c55e;display:inline-block"></span>Omzet</span>
+          <span style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text2)"><span style="width:10px;height:10px;border-radius:2px;background:#f97316;display:inline-block"></span>Kosten</span>
+        </div>
+      </div>
+      <canvas id="d-chart" style="max-height:180px"></canvas>
     </div>
     <div class="qa">
       <button class="qa-btn" onclick="nav('sc-uren');setTimeout(()=>{showWorkTab('projecten',document.getElementById('tab-projecten'));openSheet('sh-addproject');},50)">
@@ -1013,6 +1024,48 @@ function renderDash(){
   document.getElementById('d-result').textContent=fmtMoney(resultaat);
   document.getElementById('d-result').style.color='inherit';
   document.getElementById('d-result-sub').textContent=`${marge}% marge · omzet minus kosten`;
+
+  // ── Omzet vs Kosten grafiek per maand ──
+  const MAANDEN=['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+  const omzetPerMaand=Array(12).fill(0);
+  const kostenPerMaand=Array(12).fill(0);
+  invoices.filter(i=>getYear(i.date)===String(yr)).forEach(i=>{
+    const m=parseInt(i.date.slice(5,7))-1;
+    omzetPerMaand[m]+=(i.subtotal||0);
+  });
+  incoming.filter(i=>getYear(i.date)===String(yr)).forEach(i=>{
+    const m=parseInt(i.date.slice(5,7))-1;
+    kostenPerMaand[m]+=parseFloat(i.tot||0);
+  });
+  // Alleen maanden t/m nu tonen
+  const nowM=new Date().getMonth();
+  const labels=MAANDEN.slice(0,nowM+1);
+  const omzetData=omzetPerMaand.slice(0,nowM+1);
+  const kostenData=kostenPerMaand.slice(0,nowM+1);
+  const ctx=document.getElementById('d-chart');
+  if(ctx){
+    if(window._dashChart) window._dashChart.destroy();
+    window._dashChart=new Chart(ctx,{
+      type:'bar',
+      data:{
+        labels,
+        datasets:[
+          {label:'Omzet',data:omzetData,backgroundColor:'#22c55e',borderRadius:5,borderSkipped:false},
+          {label:'Kosten',data:kostenData,backgroundColor:'#f97316',borderRadius:5,borderSkipped:false}
+        ]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:true,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>'€ '+ctx.parsed.y.toLocaleString('nl-NL',{minimumFractionDigits:0})}}},
+        scales:{
+          x:{grid:{display:false},ticks:{font:{size:11}}},
+          y:{grid:{color:'rgba(0,0,0,.06)'},ticks:{font:{size:10},callback:v=>v>=1000?'€'+(v/1000).toFixed(0)+'k':'€'+v}}
+        }
+      }
+    });
+  }
+  // ────────────────────────────────────────
   // Groen kader als positief, oranje als negatief
   const heroEl=document.getElementById('d-result').closest('.hero');
   if(heroEl) heroEl.classList.toggle('positief', resultaat>0);
