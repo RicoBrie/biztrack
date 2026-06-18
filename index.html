@@ -357,9 +357,11 @@ textarea.fc{resize:vertical;min-height:70px}
   <div class="sheet-handle"></div>
   <div class="sheet-title" id="client-sheet-title">Klant toevoegen</div>
   <input type="hidden" id="client-eid">
-  <div class="fg"><label class="fl">Naam</label><input class="fc" type="text" id="c-name" placeholder="Bedrijf of persoon"></div>
+  <div class="fg"><label class="fl">Bedrijfsnaam</label><input class="fc" type="text" id="c-name" placeholder="Bedrijf of persoon"></div>
+  <div class="fg"><label class="fl">Contactpersoon</label><input class="fc" type="text" id="c-contact" placeholder="Voornaam Achternaam"></div>
   <div class="fg"><label class="fl">E-mail</label><input class="fc" type="email" id="c-email" placeholder="email@bedrijf.nl"></div>
   <div class="fg"><label class="fl">Adres</label><textarea class="fc" id="c-addr" rows="2" placeholder="Straat 1&#10;1234 AB Stad"></textarea></div>
+  <div class="fg"><label class="fl">BTW / CIF nummer <span style="color:var(--sub);font-weight:400">(optioneel)</span></label><input class="fc" type="text" id="c-kvk" placeholder="B12345678"></div>
   <div class="row2">
     <div class="fg"><label class="fl">Uurtarief (€)</label><input class="fc" type="number" id="c-rate" placeholder="150" step="5"></div>
     <div class="fg"><label class="fl">Dagtarief (€)</label><input class="fc" type="number" id="c-dagrate" placeholder="1200" step="50"></div>
@@ -639,7 +641,21 @@ textarea.fc{resize:vertical;min-height:70px}
   <div class="fg"><label class="fl">Projectnaam</label><input class="fc" type="text" id="proj-name" placeholder="Naam project"></div>
   <div class="fg">
     <label class="fl">Klant</label>
-    <select class="fc" id="proj-client"><option value="">Selecteer klant...</option></select>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select class="fc" id="proj-client" style="flex:1"><option value="">Selecteer klant...</option></select>
+      <button type="button" onclick="toggleNewClient()" style="white-space:nowrap;padding:10px 14px;border-radius:12px;border:1.5px solid var(--accent);background:none;color:var(--accent);font-weight:600;font-size:13px;cursor:pointer" id="proj-new-client-btn">+ Nieuw</button>
+    </div>
+  </div>
+  <!-- Inline nieuwe klant -->
+  <div id="proj-new-client-form" style="display:none;background:var(--card);border-radius:14px;padding:14px;margin-bottom:4px;border:.5px solid var(--border)">
+    <div style="font-size:12px;font-weight:700;color:var(--sub);letter-spacing:1px;margin-bottom:10px">NIEUWE KLANT</div>
+    <div class="fg"><label class="fl">Bedrijfsnaam *</label><input class="fc" type="text" id="pnc-name" placeholder="Naam bedrijf of persoon"></div>
+    <div class="fg"><label class="fl">Contactpersoon</label><input class="fc" type="text" id="pnc-contact" placeholder="Voornaam Achternaam"></div>
+    <div class="fg"><label class="fl">E-mail</label><input class="fc" type="email" id="pnc-email" placeholder="contact@bedrijf.com"></div>
+    <div class="fg"><label class="fl">Adres</label><textarea class="fc" id="pnc-addr" rows="2" placeholder="Straat 1&#10;1234 AB Stad"></textarea></div>
+    <div class="fg"><label class="fl">BTW / CIF nummer <span style="color:var(--sub);font-weight:400">(optioneel)</span></label><input class="fc" type="text" id="pnc-kvk" placeholder="B12345678 of NL123456789B01"></div>
+    <button type="button" class="btn btn-p" style="margin-top:4px" onclick="saveNewClientInline()"><i class="fa fa-check"></i> Klant aanmaken</button>
+    <button type="button" class="btn btn-s" style="margin-top:6px" onclick="toggleNewClient()">Annuleren</button>
   </div>
   <div class="fg"><label class="fl">Omschrijving</label><textarea class="fc" id="proj-desc" rows="2" placeholder="Korte toelichting..."></textarea></div>
   <div class="fg">
@@ -1186,6 +1202,37 @@ function delDienst(id){if(!confirm('Verwijderen?'))return;diensten=diensten.filt
 
 // ======== PROJECTEN ========
 let projType='uur';
+
+function toggleNewClient(){
+  const form=document.getElementById('proj-new-client-form');
+  const btn=document.getElementById('proj-new-client-btn');
+  const open=form.style.display==='none';
+  form.style.display=open?'block':'none';
+  btn.textContent=open?'✕ Sluiten':'+ Nieuw';
+  if(open) document.getElementById('pnc-name').focus();
+}
+
+function saveNewClientInline(){
+  const name=document.getElementById('pnc-name').value.trim();
+  if(!name){toast('Vul een bedrijfsnaam in');return;}
+  const newClient={
+    id:uid(),
+    name,
+    contact:document.getElementById('pnc-contact').value.trim(),
+    email:document.getElementById('pnc-email').value.trim(),
+    addr:document.getElementById('pnc-addr').value.trim(),
+    kvk:document.getElementById('pnc-kvk').value.trim(),
+    rate:0,dagrate:0,btw:'21'
+  };
+  clients.push(newClient);
+  save();
+  fillClientSelects();
+  document.getElementById('proj-client').value=newClient.id;
+  // Reset inline form
+  ['pnc-name','pnc-contact','pnc-email','pnc-addr','pnc-kvk'].forEach(id=>document.getElementById(id).value='');
+  toggleNewClient();
+  toast('✓ Klant aangemaakt en geselecteerd');
+}
 function setProjType(t,btn){
   projType=t;
   ['uur','dag','vast'].forEach(x=>document.getElementById('proj-type-'+x).classList.remove('on'));
@@ -1378,7 +1425,7 @@ function showProjDetail(id){
 function resetClientForm(){
   document.getElementById('client-sheet-title').textContent='Klant toevoegen';
   document.getElementById('client-eid').value='';
-  ['c-name','c-email','c-addr','c-rate','c-dagrate'].forEach(id=>document.getElementById(id).value='');
+  ['c-name','c-contact','c-email','c-addr','c-kvk','c-rate','c-dagrate'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('c-btw').value='21';
 }
 function editClient(id){
@@ -1386,8 +1433,10 @@ function editClient(id){
   document.getElementById('client-sheet-title').textContent='Klant bewerken';
   document.getElementById('client-eid').value=id;
   document.getElementById('c-name').value=c.name||'';
+  document.getElementById('c-contact').value=c.contact||'';
   document.getElementById('c-email').value=c.email||'';
   document.getElementById('c-addr').value=c.addr||'';
+  document.getElementById('c-kvk').value=c.kvk||'';
   document.getElementById('c-rate').value=c.rate||'';
   document.getElementById('c-dagrate').value=c.dagrate||'';
   document.getElementById('c-btw').value=c.btw||'21';
@@ -1396,7 +1445,7 @@ function editClient(id){
 function saveClient(){
   const name=document.getElementById('c-name').value.trim();
   if(!name){alert('Vul een naam in.');return}
-  const data={name,email:document.getElementById('c-email').value.trim(),addr:document.getElementById('c-addr').value.trim(),rate:parseFloat(document.getElementById('c-rate').value)||0,dagrate:parseFloat(document.getElementById('c-dagrate').value)||0,btw:document.getElementById('c-btw').value};
+  const data={name,contact:document.getElementById('c-contact').value.trim(),email:document.getElementById('c-email').value.trim(),addr:document.getElementById('c-addr').value.trim(),kvk:document.getElementById('c-kvk').value.trim(),rate:parseFloat(document.getElementById('c-rate').value)||0,dagrate:parseFloat(document.getElementById('c-dagrate').value)||0,btw:document.getElementById('c-btw').value};
   const eid=document.getElementById('client-eid').value;
   if(eid){const i=clients.findIndex(c=>c.id===eid);if(i>-1)clients[i]={...clients[i],...data}}
   else clients.push({id:uid(),...data});
