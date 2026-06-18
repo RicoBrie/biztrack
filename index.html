@@ -626,10 +626,16 @@ textarea.fc{resize:vertical;min-height:70px}
     <div class="fl">Selecteer facturen</div>
     <button onclick="mfToggleAll()" style="font-size:12px;background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer">Alles</button>
   </div>
-  <div id="mf-list" style="max-height:260px;overflow-y:auto;border:.5px solid var(--border);border-radius:12px;padding:4px"></div>
+  <div id="mf-list" style="max-height:220px;overflow-y:auto;border:.5px solid var(--border);border-radius:12px;padding:4px"></div>
   <div id="mf-status" style="font-size:12px;color:var(--sub);margin:8px 0;min-height:16px;text-align:center"></div>
-  <button class="btn btn-p" onclick="mailFacturen()" style="margin-bottom:8px"><i class="fa fa-envelope"></i> Mail geselecteerde facturen</button>
-  <button class="btn btn-s" onclick="closeSheet('sh-mail-fact')">Sluiten</button>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <button class="btn btn-p" onclick="mailFacturen('uit')"><i class="fa fa-arrow-up-right-dots"></i> Mail verkoopfacturen</button>
+    <button class="btn btn-o" onclick="mailFacturen('ink')"><i class="fa fa-arrow-down-left"></i> Mail inkoopfacturen</button>
+  </div>
+  <div id="mf-mac-hint" style="display:none;background:#fff8e1;border-radius:10px;padding:10px;font-size:12px;color:#555;margin-top:8px;line-height:1.5">
+    📎 PDFs zijn gedownload naar je Downloads map.<br>Sleep ze vanuit Finder naar de email als bijlage.
+  </div>
+  <button class="btn btn-s" style="margin-top:8px" onclick="closeSheet('sh-mail-fact')">Sluiten</button>
 </div></div>
 
 <!-- ===== SHEET: Project aanmaken ===== -->
@@ -2171,18 +2177,33 @@ function fillMailFact(){
   const inP=d=>{const dt=new Date(d);return dt.getFullYear()===yr&&(dt.getMonth()+1)>=ms&&(dt.getMonth()+1)<=me;};
   const uit=invoices.filter(i=>inP(i.date));
   const ink=incoming.filter(i=>inP(i.date)&&i.cat!=='loon');
-  const all=[...uit.map(i=>({...i,_type:'uit'})),...ink.map(i=>({...i,_type:'ink'}))];
-  all.sort((a,b)=>a.date.localeCompare(b.date));
   const el=document.getElementById('mf-list');
-  if(!all.length){el.innerHTML='<div style="padding:12px;text-align:center;color:var(--sub);font-size:13px">Geen facturen in deze periode</div>';return;}
-  el.innerHTML=all.map(i=>`
-    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:.5px solid var(--border);cursor:pointer">
-      <input type="checkbox" class="mf-cb" data-id="${i.id}" data-type="${i._type}" checked style="width:18px;height:18px;accent-color:var(--accent)">
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:600">${i._type==='uit'?(i.nr+' · '+(getClient(i.cid).name||'')):(i.supplier||i.cat||'inkomend')}</div>
-        <div style="font-size:11px;color:var(--sub)">${i.date} · €${parseFloat(i.tot||0).toFixed(2)} · ${i._type==='uit'?'Uitgaand':'Inkomend'}</div>
-      </div>
-    </label>`).join('');
+  if(!uit.length&&!ink.length){el.innerHTML='<div style="padding:12px;text-align:center;color:var(--sub);font-size:13px">Geen facturen in deze periode</div>';return;}
+  let html='';
+  if(uit.length){
+    html+=`<div style="padding:8px 12px 4px;font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--accent)">VERKOOP (${uit.length})</div>`;
+    html+=uit.map(i=>`
+      <label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:.5px solid var(--border);cursor:pointer;background:#fff">
+        <input type="checkbox" class="mf-cb" data-id="${i.id}" data-type="uit" checked style="width:18px;height:18px;accent-color:var(--accent)">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${i.nr||''} · ${getClient(i.cid).name||''}</div>
+          <div style="font-size:11px;color:var(--sub)">${i.date} · €${parseFloat(i.tot||0).toFixed(2)}</div>
+        </div>
+      </label>`).join('');
+  }
+  if(ink.length){
+    html+=`<div style="padding:8px 12px 4px;font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--sub)">INKOOP (${ink.length})</div>`;
+    html+=ink.map(i=>`
+      <label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:.5px solid var(--border);cursor:pointer;background:#fff">
+        <input type="checkbox" class="mf-cb" data-id="${i.id}" data-type="ink" checked style="width:18px;height:18px;accent-color:var(--accent)">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${i.supplier||i.cat||'inkomend'}</div>
+          <div style="font-size:11px;color:var(--sub)">${i.date} · €${parseFloat(i.tot||0).toFixed(2)}</div>
+        </div>
+      </label>`).join('');
+  }
+  el.innerHTML=html;
+  document.getElementById('mf-mac-hint').style.display='none';
 }
 
 function mfToggleAll(){
@@ -2265,9 +2286,11 @@ function getInvoiceHTML(inv,type){
   }
 }
 
-async function mailFacturen(){
-  const cbs=[...document.querySelectorAll('.mf-cb:checked')];
-  if(!cbs.length){toast('Selecteer minimaal één factuur');return;}
+async function mailFacturen(filterType){
+  // filterType = 'uit' (verkoop), 'ink' (inkoop), of undefined (alles geselecteerd)
+  let cbs=[...document.querySelectorAll('.mf-cb:checked')];
+  if(filterType) cbs=cbs.filter(cb=>cb.dataset.type===filterType);
+  if(!cbs.length){toast('Geen facturen geselecteerd');return;}
   const q=document.getElementById('mf-q').value;
   const yr=document.getElementById('mf-yr').value;
   const status=document.getElementById('mf-status');
@@ -2298,26 +2321,26 @@ async function mailFacturen(){
 
   if(!files.length){status.textContent='⚠ Geen PDFs gegenereerd';return;}
 
-  // Probeer Web Share API (iPhone)
+  const isVerkoop=filterType==='uit';
+  const isInkoop=filterType==='ink';
+  const typeLabel=isVerkoop?'facturas emitidas':isInkoop?'facturas recibidas':'facturas';
+  const subjectES=`${isVerkoop?'Facturas emitidas':isInkoop?'Facturas recibidas':'Facturas'} ${q} ${yr} — Next Peak Consultancy S.L.`;
+  const bodyES=`Estimado/a,\n\nAdjunto encontrará las ${typeLabel} correspondientes al período ${q} ${yr} de Next Peak Consultancy S.L.\n\nQuedamos a su disposición para cualquier consulta.\n\nUn saludo,\nNext Peak Consultancy S.L.\nCIF: ${cfg.kvk||'B25920604'}`;
+
+  // Probeer Web Share API (iPhone/iPad)
   if(navigator.canShare&&navigator.canShare({files})){
     status.textContent='';
     try{
-      await navigator.share({
-        files,
-        title:`Facturen ${q} ${yr}`,
-        text:`Bijgevoegd de facturen van ${q} ${yr} — Next Peak Consultancy`
-      });
+      await navigator.share({files,title:subjectES,text:bodyES});
       toast('✓ Gedeeld!');
-    }catch(e){if(e.name!=='AbortError')downloadAndMail(files,q,yr);}
+    }catch(e){if(e.name!=='AbortError')downloadAndMail(files,subjectES,bodyES);}
   } else {
-    // Desktop: download + mailto
-    downloadAndMail(files,q,yr);
+    downloadAndMail(files,subjectES,bodyES);
   }
   status.textContent='';
 }
 
-function downloadAndMail(files,q,yr){
-  // Download alle PDFs
+function downloadAndMail(files,subject,body){
   files.forEach(f=>{
     const a=document.createElement('a');
     a.href=URL.createObjectURL(f);
@@ -2325,12 +2348,14 @@ function downloadAndMail(files,q,yr){
     a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),5000);
   });
-  // Open mail
   const to=cfg.boekhEmail||'';
-  const sub=encodeURIComponent(`Facturen ${q} ${yr} — Next Peak Consultancy`);
-  const body=encodeURIComponent(`Beste,\n\nBijgevoegd de facturen van ${q} ${yr}.\n\nMet vriendelijke groet,\nNext Peak Consultancy S.L.`);
-  setTimeout(()=>{window.location.href=`mailto:${to}?subject=${sub}&body=${body}`;},500);
-  toast(`${files.length} PDF(s) gedownload — voeg ze toe aan de email`);
+  const sub=encodeURIComponent(subject);
+  const bod=encodeURIComponent(body);
+  setTimeout(()=>{window.location.href=`mailto:${to}?subject=${sub}&body=${bod}`;},600);
+  // Toon hint op Mac
+  const hint=document.getElementById('mf-mac-hint');
+  if(hint) hint.style.display='block';
+  toast(`${files.length} PDF(s) gedownload — sleep naar de email`);
 }
 
 function emailBoekhouder(){
