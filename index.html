@@ -118,6 +118,9 @@ textarea.fc{resize:vertical;min-height:70px}
 .t-project{background:#f3e8ff;color:#7c3aed}
 .t-commissie{background:#e0f7f4;color:#0d7a6e}
 </style>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -126,8 +129,9 @@ textarea.fc{resize:vertical;min-height:70px}
     <i class="fa fa-chevron-left"></i>
   </button>
   <span class="hdr-title" id="hdr-title">Dashboard</span>
-  <button class="hdr-btn" onclick="openSheet('sh-settings')">
+  <button class="hdr-btn" onclick="openSheet('sh-settings')" style="position:relative">
     <i class="fa fa-gear"></i>
+    <span id="sync-dot" style="position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--sub);opacity:.3;font-size:0"></span>
   </button>
 </div>
 
@@ -525,6 +529,22 @@ textarea.fc{resize:vertical;min-height:70px}
   <div style="margin-top:16px;padding-top:16px;border-top:.5px solid var(--border)">
     <div class="fl" style="margin-bottom:10px">Export voor boekhouder</div>
     <button class="btn btn-s" onclick="closeSheet('sh-settings');openSheet('sh-export')"><i class="fa fa-table"></i> Kwartaaloverzicht exporteren</button>
+  </div>
+
+  <div style="margin-top:16px;padding-top:16px;border-top:.5px solid var(--border)">
+    <div class="fl" style="margin-bottom:4px">📱 Synchronisatie</div>
+    <div style="font-size:12px;color:var(--sub);margin-bottom:10px">Zelfde code op al je apparaten = altijd gesynchroniseerd</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span id="sync-code-display" style="font-size:24px;font-weight:700;letter-spacing:4px;font-family:monospace;color:var(--text)">----</span>
+      <button class="btn btn-o" style="padding:8px 14px;font-size:12px" onclick="copySyncCode()">Kopiëren</button>
+    </div>
+    <div style="font-size:12px;color:var(--sub);margin-bottom:6px">Andere code invoeren (voor iPhone koppelen):</div>
+    <div style="display:flex;gap:8px">
+      <input class="fc" type="text" id="sync-code-input" placeholder="ABCD1234" maxlength="8"
+        style="font-family:monospace;letter-spacing:3px;text-transform:uppercase;font-size:16px;text-align:center">
+      <button class="btn btn-p" style="white-space:nowrap;padding:0 14px" onclick="setSyncCode()">Koppelen</button>
+    </div>
+    <div id="sync-msg" style="font-size:12px;color:var(--good);margin-top:6px;min-height:16px"></div>
   </div>
 
   <button class="btn btn-s" style="margin-top:16px" onclick="closeSheet('sh-settings')">Sluiten</button>
@@ -2224,6 +2244,9 @@ function fillSettings(){
   document.getElementById('pin-btn-label').textContent=hasPin?'PIN wijzigen':'PIN instellen';
   document.getElementById('biometric-section').style.display=hasPin?'block':'none';
   document.getElementById('lock-status').textContent=hasPin?(LS.g('bioCredId')?'Beveiligd · PIN + Face ID actief':'Beveiligd · PIN actief'):'Niet beveiligd';
+  // Sync code tonen
+  const el=document.getElementById('sync-code-display');
+  if(el) el.textContent=fbGetKey();
 }
 function saveSettings(){
   cfg={co:document.getElementById('s-co').value.trim(),addr:document.getElementById('s-addr').value.trim(),kvk:document.getElementById('s-kvk').value.trim(),iban:document.getElementById('s-iban').value.trim(),bic:document.getElementById('s-bic').value.trim(),email:document.getElementById('s-email').value.trim(),boekhEmail:document.getElementById('s-boekhmail').value.trim(),days:parseInt(document.getElementById('s-days').value)||14};
@@ -2420,6 +2443,105 @@ function seedQ1Data(){
 if(!clients.length && !invoices.length) seedQ1Data();
 checkLock();
 nav('sc-dash');
+</script>
+
+<script>
+// ── BIZTRACK FIREBASE SYNC ──
+const FB_CFG = {
+  apiKey: "FIREBASE_API_KEY",
+  authDomain: "FIREBASE_AUTH_DOMAIN",
+  databaseURL: "FIREBASE_DATABASE_URL",
+  projectId: "FIREBASE_PROJECT_ID",
+  storageBucket: "FIREBASE_STORAGE_BUCKET",
+  messagingSenderId: "FIREBASE_MESSAGING_SENDER_ID",
+  appId: "FIREBASE_APP_ID"
+};
+const FB_KEYS = ['clients','diensten','invoices','incoming','projects','logs','cfg','bank'];
+let _fbDb = null;
+
+function fbGetKey(){
+  let k = LS.g('fbSyncKey');
+  if(!k){ k = Math.random().toString(36).substr(2,8).toUpperCase(); LS.s('fbSyncKey',k); }
+  return k;
+}
+
+function fbSetDot(color){
+  const d = document.getElementById('sync-dot');
+  if(d){ d.style.background = color; d.style.opacity = '1'; setTimeout(()=>d.style.opacity='.3', 2500); }
+}
+
+function fbPush(){
+  if(!_fbDb) return;
+  try {
+    const data = { _ts: Date.now() };
+    FB_KEYS.forEach(k => { try{ data[k] = eval(k); }catch(e){} });
+    _fbDb.ref('biz/' + fbGetKey()).set(data);
+    fbSetDot('#22c55e');
+  } catch(e){}
+}
+
+function fbPull(){
+  if(!_fbDb) return;
+  _fbDb.ref('biz/' + fbGetKey()).once('value').then(snap => {
+    const d = snap.val();
+    if(!d || !d._ts) return;
+    const localTs = LS.g('_fbTs') || 0;
+    if(d._ts > localTs + 1000){
+      FB_KEYS.forEach(k => {
+        if(d[k] !== undefined){
+          LS.s(k, d[k]);
+          if(k==='clients') clients=d.clients;
+          else if(k==='diensten') diensten=d.diensten;
+          else if(k==='invoices') invoices=d.invoices;
+          else if(k==='incoming') incoming=d.incoming;
+          else if(k==='projects') projects=d.projects;
+          else if(k==='logs') logs=d.logs;
+          else if(k==='cfg') cfg=d.cfg;
+          else if(k==='bank') bank=d.bank;
+        }
+      });
+      LS.s('_fbTs', d._ts);
+      renderDash();
+      fbSetDot('#3b82f6');
+    } else {
+      fbSetDot('#22c55e');
+    }
+  }).catch(()=>{});
+}
+
+function copySyncCode(){
+  const k = fbGetKey();
+  navigator.clipboard.writeText(k).then(()=>toast('✓ Code gekopieerd — plak op je iPhone')).catch(()=>toast(k));
+}
+
+function setSyncCode(){
+  const input = (document.getElementById('sync-code-input').value||'').trim().toUpperCase();
+  if(input.length < 4){ toast('Voer een geldige code in'); return; }
+  LS.s('fbSyncKey', input);
+  document.getElementById('sync-code-display').textContent = input;
+  document.getElementById('sync-msg').textContent = 'Verbinden...';
+  fbPull();
+  setTimeout(()=>{
+    document.getElementById('sync-msg').textContent = '✓ Gekoppeld';
+    toast('✓ Apparaten gekoppeld');
+  }, 2000);
+}
+
+// Hook into save()
+(function(){
+  const _orig = window.save;
+  window.save = function(){ _orig(); fbPush(); };
+})();
+
+// Init Firebase
+try {
+  if(FB_CFG.apiKey !== 'FIREBASE_API_KEY'){
+    if(!firebase.apps.length) firebase.initializeApp(FB_CFG);
+    _fbDb = firebase.database();
+    fbPull();
+  }
+} catch(e){ console.log('Firebase init fout:', e); }
+// ── END BIZTRACK FIREBASE SYNC ──
 </script>
 
 <script>
