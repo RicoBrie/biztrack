@@ -2766,7 +2766,7 @@ function seedQ1Data(){
       excl:324.21,  btw:'0',  tot:324.21,   cat:'overig',  notes:'Kofferbakbeschermer Mercedes GLE 2019+ (zwart) + indeling + bumper flap — verzending €29.21', paid:true, paidDate:'2026-05-26' },
 
     { id:'in21', sup:'ALO SPORT 2006 S.L.',               nr:'A/105',              date:'2026-05-20', due:'',
-      excl:41240,   btw:'21', tot:49900.40, cat:'overig',  notes:'Mercedes GLE 350DE 4MATIC — bastidor W1N1671171A363932 — aankoop voertuig',                paid:false, paidDate:null },
+      excl:41240,   btw:'21', tot:49900.40, cat:'overig',  notes:'Mercedes GLE 350DE 4MATIC — bastidor W1N1671171A363932 — aankoop voertuig',                paid:true, paidDate:'2026-05-20' },
 
     { id:'in22', sup:'Geometriktarget, Lda',              nr:'FAR.2026/885',       date:'2026-06-17', due:'2026-06-17',
       excl:463.57,  btw:'0',  tot:463.57,   cat:'overig',  notes:'Kunstgras Curl 2000x10000x15mm Dark Grey + transport Portugal→Jávea — Isento art. 14.º RITI', paid:true, paidDate:'2026-06-17' },
@@ -2831,9 +2831,11 @@ function fbSetDot(color){
 function fbPush(){
   if(!_fbDb) return;
   try {
-    const data = { _ts: Date.now() };
+    const ts = Date.now();
+    const data = { _ts: ts };
     FB_KEYS.forEach(k => { try{ data[k] = eval(k); }catch(e){} });
     _fbDb.ref('biz/' + fbGetKey()).set(data);
+    LS.s('_fbTs', ts); // voorkom dat pull direct overschrijft
     fbSetDot('#22c55e');
   } catch(e){}
 }
