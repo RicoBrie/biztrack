@@ -696,10 +696,10 @@ textarea.fc{resize:vertical;min-height:70px}
   <div class="fg"><label class="fl">Datum</label><input class="fc" type="date" id="addlog-date"></div>
   <div class="fg"><label class="fl">Omschrijving</label><input class="fc" type="text" id="addlog-desc" placeholder="Zaak / bemiddeling / strategie..."></div>
   <div class="row2">
-    <div class="fg"><label class="fl">Dagtarief (€)</label>
+    <div class="fg"><label class="fl" id="addlog-rate-lbl">Dagtarief (€)</label>
       <input class="fc" type="number" id="addlog-rate" placeholder="1000" step="50" oninput="calcLogTotal()">
     </div>
-    <div class="fg"><label class="fl">Aantal dagen</label>
+    <div class="fg"><label class="fl" id="addlog-qty-lbl">Aantal dagen</label>
       <input class="fc" type="number" id="addlog-qty" placeholder="1" step="0.5" min="0.5" value="1" oninput="calcLogTotal()">
     </div>
   </div>
@@ -1288,9 +1288,25 @@ function calcLogTotal(){
 }
 function openAddLog(pid, lid){
   const p=projects.find(x=>x.id===pid);
+  const tType=p?.tariefType||'dag';
+  const c=p?getClient(p.cid):null;
+
   document.getElementById('addlog-pid').value=pid;
   document.getElementById('addlog-lid').value=lid||'';
-  document.getElementById('addlog-title').textContent=lid?'Dag bewerken':'Dag toevoegen';
+
+  // Labels aanpassen op tarief-type
+  const rateLbls={uur:'Uurtarief (€)',dag:'Dagtarief (€)',vast:'Bedrag (€)'};
+  const qtyLbls={uur:'Aantal uren',dag:'Aantal dagen',vast:'Eenheden'};
+  const ratePH={uur:'150',dag:'1000',vast:'5000'};
+  const qtyPH={uur:'4',dag:'1',vast:'1'};
+  const qtyStep={uur:'0.25',dag:'0.5',vast:'1'};
+  document.getElementById('addlog-rate-lbl').textContent=rateLbls[tType];
+  document.getElementById('addlog-qty-lbl').textContent=qtyLbls[tType];
+  document.getElementById('addlog-rate').placeholder=ratePH[tType];
+  document.getElementById('addlog-qty').placeholder=qtyPH[tType];
+  document.getElementById('addlog-qty').step=qtyStep[tType];
+  document.getElementById('addlog-title').textContent=lid?(tType==='uur'?'Uur bewerken':'Dag bewerken'):(tType==='uur'?'Uren toevoegen':'Dag toevoegen');
+
   if(lid){
     const l=logs.find(x=>x.id===lid);
     if(l){
@@ -1303,9 +1319,8 @@ function openAddLog(pid, lid){
   } else {
     document.getElementById('addlog-date').value=today();
     document.getElementById('addlog-desc').value='';
-    // Prefill rate from project or client dagrate
-    const c=p?getClient(p.cid):null;
-    const prefill=p?.dagrate||c?.dagrate||'';
+    // Prefill tarief uit project of klant
+    const prefill=p?.tarief||(tType==='uur'?c?.rate:c?.dagrate)||'';
     document.getElementById('addlog-rate').value=prefill;
     document.getElementById('addlog-qty').value=1;
     document.getElementById('addlog-amt').value=prefill?String(prefill):'';
