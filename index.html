@@ -120,6 +120,27 @@ textarea.fc{resize:vertical;min-height:70px}
 .t-dag{background:#e8f0fe;color:#1a56c4}
 .t-project{background:#f3e8ff;color:#7c3aed}
 .t-commissie{background:#e0f7f4;color:#0d7a6e}
+/* Alert banner */
+.alert-band{border-radius:14px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.alert-band.bad{background:#fdecea;border-left:3px solid var(--bad)}
+.alert-band.warn{background:#fff4e0;border-left:3px solid var(--warn)}
+.alert-band-icon{font-size:18px;flex-shrink:0}
+.alert-band-body{flex:1;min-width:0}
+.alert-band-title{font-size:13px;font-weight:700}
+.alert-band-sub{font-size:12px;color:var(--text2);margin-top:1px}
+/* KPI strip */
+.kpi-strip{display:flex;gap:8px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none}
+.kpi-strip::-webkit-scrollbar{display:none}
+.kpi-card{flex:0 0 auto;background:var(--card);border-radius:14px;padding:12px 14px;min-width:110px;cursor:pointer}
+.kpi-label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.kpi-val{font-size:22px;font-weight:800;line-height:1}
+.kpi-sub{font-size:11px;color:var(--text2);margin-top:3px}
+/* Cashflow kaart */
+.cf-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:.5px solid var(--border);font-size:13px}
+.cf-row:last-child{border-bottom:none}
+/* Swipe item */
+.swipe-wrap{position:relative;overflow:hidden;border-radius:12px}
+.swipe-action{position:absolute;right:0;top:0;bottom:0;width:70px;background:var(--ok);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;border-radius:0 12px 12px 0;transform:translateX(70px);transition:transform .15s}
 </style>
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -142,11 +163,15 @@ textarea.fc{resize:vertical;min-height:70px}
 
   <!-- DASHBOARD -->
   <div class="screen on" id="sc-dash">
+    <!-- Alert banners (overdue + IRPF) -->
+    <div id="d-alerts"></div>
     <div class="hero" style="cursor:pointer" onclick="nav('sc-fuit')">
       <div class="hero-label">Resultaat jaar tot nu</div>
       <div class="hero-val" id="d-result">€ 0</div>
       <div class="hero-sub" id="d-result-sub">omzet minus kosten</div>
     </div>
+    <!-- KPI strip -->
+    <div class="kpi-strip" id="d-kpi-strip"></div>
     <div class="stats2">
       <div class="card" onclick="nav('sc-fuit')" style="cursor:pointer">
         <div class="card-label">Omzet YTD</div>
@@ -170,6 +195,18 @@ textarea.fc{resize:vertical;min-height:70px}
         <div class="stat-val" id="d-pay">€ 0</div>
         <div class="stat-sub" id="d-pay-n">0 facturen</div>
       </div>
+    </div>
+    <!-- Cashflow prognose -->
+    <div class="card" id="d-cashflow-card" style="margin-bottom:10px;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="card-label" style="margin-bottom:0">Cashflow prognose</div>
+        <div id="d-cf-tabs" style="display:flex;gap:4px">
+          <button onclick="setCfPeriod(30,this)" class="btn btn-s btn-sm" style="padding:4px 10px;font-size:11px;font-weight:700;background:var(--accent);color:#fff" id="cf-30">30d</button>
+          <button onclick="setCfPeriod(60,this)" class="btn btn-s btn-sm" style="padding:4px 10px;font-size:11px;font-weight:700" id="cf-60">60d</button>
+          <button onclick="setCfPeriod(90,this)" class="btn btn-s btn-sm" style="padding:4px 10px;font-size:11px;font-weight:700" id="cf-90">90d</button>
+        </div>
+      </div>
+      <div id="d-cashflow-body"></div>
     </div>
     <div class="card" style="margin-bottom:10px;padding-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -1006,6 +1043,48 @@ function saveDienst(){
 }
 
 // ======== DASHBOARD ========
+let _cfPeriod=30;
+function setCfPeriod(d,btn){
+  _cfPeriod=d;
+  document.querySelectorAll('#d-cf-tabs button').forEach(b=>{b.style.background='';b.style.color='';});
+  btn.style.background='var(--accent)'; btn.style.color='#fff';
+  renderCashflow();
+}
+
+function renderCashflow(){
+  const now=new Date(); now.setHours(0,0,0,0);
+  const cutoff=new Date(now.getTime()+_cfPeriod*86400000);
+  // Verwachte inkomsten: open facturen met due date binnen periode
+  const verwachtIn=invoices.filter(i=>!i.paid&&i.due&&new Date(i.due)<=cutoff);
+  const totIn=verwachtIn.reduce((s,i)=>s+(i.total||0),0);
+  // Vaste kosten schatting: gemiddeld van afgelopen 3 maanden × (period/30)
+  const drieM=new Date(now.getTime()-90*86400000);
+  const kostenBlok=incoming.filter(i=>i.paid&&new Date(i.paidDate||i.date)>=drieM&&i.cat!=='belasting'&&i.cat!=='loon');
+  const maandKosten=kostenBlok.reduce((s,i)=>s+parseFloat(i.tot||0),0)/3;
+  const verwachtUit=maandKosten*(_cfPeriod/30);
+  const lonen=(_cfPeriod/30)*incoming.filter(i=>i.cat==='loon'&&getYear(i.date)===String(now.getFullYear())).reduce((s,i,_,a)=>s+parseFloat(i.tot||0)/a.length,0)||0;
+  const netto=totIn-verwachtUit-lonen;
+  const cfCard=document.getElementById('d-cashflow-card');
+  const cfBody=document.getElementById('d-cashflow-body');
+  if(!cfCard||!cfBody) return;
+  const hasData=totIn>0||verwachtUit>0;
+  cfCard.style.display=hasData?'block':'none';
+  cfBody.innerHTML=`
+    <div class="cf-row">
+      <span style="color:var(--text2)">Verwacht te ontvangen</span>
+      <span style="font-weight:700;color:var(--ok)">+${fmtMoney(totIn)}</span>
+    </div>
+    ${verwachtIn.map(i=>{const c=getClient(i.cid);const d=i.due?Math.ceil((new Date(i.due)-now)/86400000):0;return`<div class="cf-row" style="padding-left:12px"><span style="color:var(--text2);font-size:12px">${c.name||'?'} · ${fmtDate(i.due)} <span style="color:${d<0?'var(--bad)':'var(--warn)'};font-size:11px;font-weight:700">${d<0?Math.abs(d)+' d te laat':d+' d'}</span></span><span style="font-weight:600;font-size:12px">${fmtMoney(i.total||0)}</span></div>`}).join('')}
+    <div class="cf-row">
+      <span style="color:var(--text2)">Geschatte kosten</span>
+      <span style="font-weight:700;color:var(--bad)">-${fmtMoney(verwachtUit+lonen)}</span>
+    </div>
+    <div class="cf-row" style="font-weight:800;font-size:15px">
+      <span>Netto cashflow ${_cfPeriod}d</span>
+      <span style="color:${netto>=0?'var(--ok)':'var(--bad)'}">${netto>=0?'+':''}${fmtMoney(netto)}</span>
+    </div>`;
+}
+
 function renderDash(){
   const yr=new Date().getFullYear();
   const yrStart=new Date(yr,0,1);
@@ -1020,6 +1099,73 @@ function renderDash(){
 
   const resultaat=omzetYTD-kostenYTD;
   const marge=omzetYTD>0?((resultaat/omzetYTD)*100).toFixed(0):0;
+
+  // ── ALERTS ──
+  const now0=new Date(); now0.setHours(0,0,0,0);
+  const overdueInv=invoices.filter(i=>!i.paid&&i.due&&new Date(i.due)<now0);
+  const irpfOpen=incoming.filter(i=>i.cat==='loon'&&i.irpf>0&&!i.irpfPaid);
+  const irpfTot=irpfOpen.reduce((s,i)=>s+parseFloat(i.irpf||0),0);
+  const alertEl=document.getElementById('d-alerts');
+  if(alertEl){
+    let html='';
+    overdueInv.forEach(i=>{
+      const c=getClient(i.cid);
+      const days=Math.floor((now0-new Date(i.due))/86400000);
+      html+=`<div class="alert-band bad" onclick="showInvDetail('${i.id}')" style="cursor:pointer">
+        <div class="alert-band-icon" style="color:var(--bad)"><i class="fa fa-triangle-exclamation"></i></div>
+        <div class="alert-band-body">
+          <div class="alert-band-title">${c.name||'?'} — ${fmtMoney(i.total)} te laat</div>
+          <div class="alert-band-sub">${i.nr} · ${days} dag${days!==1?'en':''} over vervaldatum</div>
+        </div>
+        <button onclick="event.stopPropagation();dashMarkPaid('${i.id}')" style="background:var(--bad);border:none;color:#fff;border-radius:9px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">✓ Ontvangen</button>
+      </div>`;
+    });
+    if(irpfTot>0){
+      html+=`<div class="alert-band warn">
+        <div class="alert-band-icon" style="color:var(--warn)"><i class="fa fa-building-columns"></i></div>
+        <div class="alert-band-body">
+          <div class="alert-band-title">IRPF nog te betalen: ${fmtMoney(irpfTot)}</div>
+          <div class="alert-band-sub">${irpfOpen.length} loonperiode${irpfOpen.length!==1?'s':''} — afdragen aan Hacienda</div>
+        </div>
+      </div>`;
+    }
+    alertEl.innerHTML=html;
+  }
+
+  // ── KPI STRIP ──
+  const loonYTD=incoming.filter(i=>i.cat==='loon'&&new Date(i.date)>=yrStart).reduce((s,i)=>s+parseFloat(i.tot||0),0);
+  const loonPct=omzetYTD>0?((loonYTD/omzetYTD)*100).toFixed(0):0;
+  const topClient=clients.map(c=>{
+    const rev=invoices.filter(i=>i.cid===c.id&&new Date(i.date)>=yrStart).reduce((s,i)=>s+(i.subtotal||0),0);
+    return{name:c.name,rev};
+  }).sort((a,b)=>b.rev-a.rev)[0];
+  const openInv30=invoices.filter(i=>!i.paid&&i.due&&(new Date(i.due)-now0)<=30*86400000);
+  const cf30=openInv30.reduce((s,i)=>s+(i.total||0),0);
+  const kpiEl=document.getElementById('d-kpi-strip');
+  if(kpiEl) kpiEl.innerHTML=`
+    <div class="kpi-card" onclick="nav('sc-fuit')">
+      <div class="kpi-label">Marge</div>
+      <div class="kpi-val" style="color:${marge>=50?'var(--ok)':marge>=25?'var(--warn)':'var(--bad)'}">${marge}%</div>
+      <div class="kpi-sub">netto resultaat</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Loonratio</div>
+      <div class="kpi-val">${loonPct}%</div>
+      <div class="kpi-sub">van omzet</div>
+    </div>
+    <div class="kpi-card" onclick="setCfPeriod(30,document.getElementById('cf-30'))">
+      <div class="kpi-label">Cashflow 30d</div>
+      <div class="kpi-val" style="color:${cf30>0?'var(--ok)':'var(--text2)'}">+${cf30>=1000?(cf30/1000).toFixed(0)+'k':cf30.toFixed(0)}</div>
+      <div class="kpi-sub">${openInv30.length} open factuur${openInv30.length!==1?'en':''}</div>
+    </div>
+    ${topClient&&topClient.rev>0?`<div class="kpi-card" onclick="nav('sc-klanten')">
+      <div class="kpi-label">Top klant</div>
+      <div class="kpi-val" style="font-size:14px;font-weight:800;line-height:1.2">${topClient.name.split(' ')[0]}</div>
+      <div class="kpi-sub">${fmtMoney(topClient.rev)}</div>
+    </div>`:''}`;
+
+  // ── Cashflow kaart ──
+  renderCashflow();
 
   document.getElementById('d-result').textContent=fmtMoney(resultaat);
   document.getElementById('d-result').style.color='inherit';
